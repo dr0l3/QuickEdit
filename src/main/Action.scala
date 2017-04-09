@@ -43,7 +43,10 @@ class CopyEntry extends AnAction {
 	override def actionPerformed(anActionEvent: AnActionEvent) {
 		val stateInflaters = StartUtil.createInflatersAndAddComponent(anActionEvent)
 		val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
-		val effectCreator: (Int, Int, Editor) => () => Unit = (off1: Int, off2: Int, editor: Editor) => () => EditorUtil.performCopy(off1,off2, editor)
+		val effectCreator: (Int, Int, Editor) => () => Unit = (off1: Int, off2: Int, editor: Editor) => () => {
+			EditorUtil.performMarkRange(off1, off2, editor)
+			EditorUtil.performCopy(off1,off2, editor)
+		}
 		val undoCreator: (Int, Int, Editor) => () => Unit = (off1: Int, off2: Int, editor: Editor) => () => Unit
 		new TwoOverlayAction(editor, stateInflaters, State(), effectCreator, undoCreator).start(anActionEvent)
 	}

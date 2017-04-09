@@ -146,7 +146,9 @@ class EffectExecutor(val editor: Editor) extends StateInflater {
 		toUndo.foreach(tuple => tuple._2())
 	}
 	
-	override def deflateState() = {}
+	override def deflateState() = {
+		editor.getMarkupModel.removeAllHighlighters()
+	}
 }
 
 class ScrollInflater(val editor: Editor) extends StateInflater{
