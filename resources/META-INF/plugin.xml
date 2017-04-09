@@ -1,12 +1,12 @@
 <idea-plugin>
-  <id>SOMERANDOMID</id>
-  <name>DTPP2</name>
-  <version>7.0</version>
-  <vendor email="support@yourcompany.com" url="http://www.yourcompany.com">YourCompany</vendor>
+  <id>com.droletours.quickedit</id>
+  <name>QuickEdit</name>
+  <version>1.0</version>
+  <vendor email="runedrolepedersen@gmail.com" url="http://www.drole.work">Drole Tours</vendor>
 
   <description><![CDATA[
-      Enter short description for your plugin here.<br>
-      <em>most HTML tags may be used</em>
+      Quick edit allows you to efficiently manipulate your editor. <br>
+      Quick edit draws inspiration from Easy Motion, but has no modal editor requirement.
     ]]></description>
 
   <change-notes><![CDATA[
@@ -30,8 +30,10 @@
 
   <actions>
     <!-- Add your actions here -->
-    <action class="main.JumpEntry" id="SomeExample"/>
-    <action class="main.DeleteEntry" id="SomeOtherExample"/>
+    <action class="main.JumpEntry" id="Jump to offset"/>
+    <action class="main.DeleteEntry" id="Delete between two offsets"/>
+    <action class="main.CutEntry" id="Cut between two offsets"/>
+    <action class="main.CopyEntry" id="Copy between two offsets"/>
   </actions>
 
 </idea-plugin>
