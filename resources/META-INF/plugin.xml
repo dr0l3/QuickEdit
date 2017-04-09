@@ -30,7 +30,8 @@
 
   <actions>
     <!-- Add your actions here -->
-    <action class="main.Example" id="SomeExample"/>
+    <action class="main.JumpEntry" id="SomeExample"/>
+    <action class="main.DeleteEntry" id="SomeOtherExample"/>
   </actions>
 
 </idea-plugin>

@@ -90,10 +90,13 @@ class NonCharListener(val textField: JBTextField, val action: DtppAction) extend
 		textField.getActionMap.put("enter+alt", new SomeAction(action, EnterInput(ModifierCombination.ALT)))
 		
 		textField.getInputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_I, InputEvent.ALT_DOWN_MASK), "i+alt")
-		textField.getActionMap.put("i+alt", new SomeAction(action, ScrollInput(ModifierCombination.NONE)))
+		textField.getActionMap.put("i+alt", new SomeAction(action, ScrollInput(ScrollDirection.UP,ModifierCombination.NONE)))
 		
 		textField.getInputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK), "k+alt")
-		textField.getActionMap.put("k+alt", new SomeAction(action, ScrollInput(ModifierCombination.NONE)))
+		textField.getActionMap.put("k+alt", new SomeAction(action, ScrollInput(ScrollDirection.DOWN,ModifierCombination.NONE)))
+		
+		textField.getInputMap.put(KeyStroke.getKeyStroke(KeyEvent.VK_H, InputEvent.ALT_DOWN_MASK), "h+alt")
+		textField.getActionMap.put("h+alt", new SomeAction(action, ScrollInput(ScrollDirection.HOME,ModifierCombination.NONE)))
 	}
 	
 	override def unregister(): Unit = {
@@ -104,6 +107,7 @@ class NonCharListener(val textField: JBTextField, val action: DtppAction) extend
 		textField.getInputMap.remove(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, InputEvent.ALT_DOWN_MASK))
 		textField.getInputMap.remove(KeyStroke.getKeyStroke(KeyEvent.VK_I, InputEvent.ALT_DOWN_MASK))
 		textField.getInputMap.remove(KeyStroke.getKeyStroke(KeyEvent.VK_K, InputEvent.ALT_DOWN_MASK))
+		textField.getInputMap.remove(KeyStroke.getKeyStroke(KeyEvent.VK_H, InputEvent.ALT_DOWN_MASK))
 	}
 	
 	class SomeAction(action: DtppAction, internalInput: Input) extends AbstractAction{
