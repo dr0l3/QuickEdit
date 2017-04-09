@@ -5,17 +5,70 @@ import java.awt.geom.Rectangle2D
 import java.util.UUID
 import javax.swing.JComponent
 
+import com.intellij.openapi.actionSystem.{AnActionEvent, CommonDataKeys}
 import com.intellij.openapi.editor.{Editor, LogicalPosition}
 import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.openapi.util.TextRange
 import com.intellij.ui.JBColor
 import main._
+import state._
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 
 /**
   * Created by dr0l3 on 4/6/17.
   */
+
+object StartUtil {
+	def createInflatersAndAddComponent(anActionEvent: AnActionEvent): mutable.MutableList[StateInflater] = {
+		if(anActionEvent == null)
+			mutable.MutableList.empty
+		else {
+			val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
+			val markerPanel = new MarkerPainter(editor)
+			editor.getContentComponent.add(markerPanel)
+			val effectExecutor = new EffectExecutor(editor)
+			val scrollInflater = new ScrollInflater(editor)
+			val stateInflaters = mutable.MutableList[StateInflater](markerPanel, effectExecutor, scrollInflater)
+			stateInflaters
+		}
+	}
+}
+
+object ActionUtil {
+	def handleNewState(currentState: Snapshot, newState: Snapshot, state: State, stateInflaters: mutable.MutableList[StateInflater]): State = {
+		println("newState:" + newState)
+		if((currentState.snapshotState == PluginState.UPDATE &&
+			newState.snapshotState == PluginState.SELECTING) ||
+			(currentState.snapshotState == PluginState.SELECTING &&
+				newState.snapshotState == PluginState.ACCEPT) || (
+			currentState.snapshotState == PluginState.SELECTING &&
+				newState.snapshotState == PluginState.UPDATE)){
+			state.snapshots = newState :: state.snapshots
+		} else {
+			state.snapshots = newState :: state.snapshots.tail
+		}
+		
+		if(newState.snapshotState == PluginState.UNDO){
+			if(state.snapshots.tail.isEmpty){
+				state.snapshots = List(state.snapshots.head.copy(snapshotState = PluginState.EXIT))
+			} else {
+				state.snapshots = state.snapshots.tail
+			}
+		}
+		
+		if(state.snapshots.head.snapshotState != PluginState.EXIT){
+			println("The stack:" + state.snapshots)
+			println("inflating: " + state.snapshots.head)
+			stateInflaters.foreach(inf => inf.inflateState(state.snapshots.head))
+		} else {
+			println("Exit")
+			stateInflaters.foreach(inf => inf.deflateState())
+		}
+		state
+	}
+}
 
 object Reducers {
 	def updateString(currentState: Snapshot, input: StringInput, editor: Editor) = {
@@ -40,7 +93,7 @@ object Reducers {
 	}
 	
 	def updateEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		currentState.copy(snapshotState = PluginState.UNDO)
+		commonEscape(currentState, input, editor)
 	}
 	
 	def updateScroll(currentState: Snapshot, input: ScrollInput, editor: Editor) = {
@@ -67,7 +120,11 @@ object Reducers {
 		}
 	}
 	
-	def selectString(currentState: Snapshot, input: StringInput, editor: Editor) = {
+	def selectString(currentState: Snapshot,
+	                 input: StringInput,
+	                 editor: Editor,
+	                 effectCreator: (Int, Editor) => () => Unit,
+	                 undoCreator: (Int, Editor) => () => Unit) = {
 		val search = input.value
 		val maybeMarkerHit = currentState.markers.find(mar => mar.repText == search.toUpperCase)
 		if(maybeMarkerHit.isEmpty){
@@ -76,8 +133,8 @@ object Reducers {
 			maybeMarkerHit.get.mType match {
 				case MarkerType.PRIMARY =>
 					val currentPosition = editor.getCaretModel.getOffset
-					val effect = () => EditorUtil.performMove(maybeMarkerHit.get.start, editor)
-					val undoer = () => EditorUtil.performMove(currentPosition, editor)
+					val effect = effectCreator(maybeMarkerHit.get.start, editor)
+					val undoer = undoCreator(currentPosition, editor)
 					val id = UUID.randomUUID().toString
 					val tuple = (effect, undoer, id)
 					currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
@@ -94,7 +151,10 @@ object Reducers {
 		}
 	}
 	
-	def selectStringTwo(currentState: Snapshot, input: StringInput, editor: Editor)= {
+	def selectStringTwo(currentState: Snapshot,
+	                    input: StringInput, editor: Editor,
+	                    effectCreator: (Int, Int, Editor) => () => Unit,
+	                    undoCreator: (Int, Int, Editor) => () => Unit)= {
 		val search = input.value
 		val maybeMarkerHit = currentState.markers.find(mar => mar.repText == search.toUpperCase)
 		if(maybeMarkerHit.isEmpty){
@@ -126,10 +186,8 @@ object Reducers {
 							} else {
 								val smallestOffset = Math.min(firstMarker.get.start, maybeMarkerHit.get.start)
 								val largestOffset = Math.max(firstMarker.get.start, maybeMarkerHit.get.start)
-								val effect = () => EditorUtil.performDelete(smallestOffset, largestOffset, editor)
-								val textRange = new TextRange(smallestOffset, largestOffset)
-								val text = editor.getDocument.getText(textRange)
-								val undoer = () => EditorUtil.performPaste(smallestOffset, editor, text)
+								val effect = effectCreator(smallestOffset, largestOffset, editor)
+								val undoer = undoCreator(smallestOffset, largestOffset, editor)
 								val id = UUID.randomUUID().toString
 								val tuple = (effect, undoer, id)
 								currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
@@ -150,7 +208,7 @@ object Reducers {
 	}
 	
 	def selectEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		currentState.copy(snapshotState = PluginState.UNDO)
+		commonEscape(currentState, input, editor)
 	}
 	
 	def acceptAccept(currentState: Snapshot, input: AcceptInput, editor: Editor) = {
@@ -158,7 +216,15 @@ object Reducers {
 	}
 	
 	def acceptEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		currentState.copy(snapshotState = PluginState.UNDO)
+		commonEscape(currentState, input, editor)
+	}
+	
+	private def commonEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
+		if(input.modifiers == ModifierCombination.ALT){
+			currentState.copy(snapshotState = PluginState.EXIT)
+		} else {
+			currentState.copy(snapshotState = PluginState.UNDO)
+		}
 	}
 }
 
