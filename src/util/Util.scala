@@ -82,8 +82,11 @@ object Reducers {
 				val doc = EditorUtil.entireDocument(editor)
 				val hits: List[Int] = EditorUtil.getMatchesForStringInTextRange(search, editor, doc).asScala.map(_.toInt).toList
 				val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
+				val visibleArea = EditorUtil.getVisibleTextRange(editor)
+				val closestHit = sortedHits.headOption
+				val paintCenter = if(visibleArea.contains(closestHit.getOrElse(currentState.markerPaintCenter))) currentState.markerPaintCenter else sortedHits.head
 				val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet, List.empty)
-				currentState.copy(markers = markers, search = search)
+				currentState.copy(markers = markers, search = search, markerPaintCenter = paintCenter)
 			}
 		}
 	}
@@ -181,7 +184,6 @@ object Reducers {
 						case MarkerType.PRIMARY =>
 							val firstMarker = currentState.selectedMarkers.headOption
 							if(firstMarker.isEmpty) {
-								println("First marker not found")
 								currentState.copy()
 							} else {
 								val smallestOffset = Math.min(firstMarker.get.start, maybeMarkerHit.get.start)
