@@ -1,13 +1,14 @@
-package main
-
+package actions
+import actions.DtppAction.{EffCreatorOneOL, EffCreatorTwoOL, UndoCreatorOneOL, UndoCreatorTwoOL}
+import actions.MarkerType.MarkerType
+import actions.ModifierCombination.ModifierCombination
+import actions.ScrollDirection.ScrollDirection
 import com.intellij.openapi.actionSystem.{AnAction, AnActionEvent, CommonDataKeys}
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.util.TextRange
-import main.MarkerType.MarkerType
-import main.ModifierCombination.ModifierCombination
-import main.ScrollDirection.ScrollDirection
-import state._
-import util._
+import dtpp.util.EditorUtil
+import state.{State, _}
+import util.{StartUtil, _}
 
 import scala.collection.mutable
 
@@ -71,11 +72,20 @@ trait DtppAction {
 	def receiveInput(input: Input)
 }
 
+object DtppAction {
+	type Eff = () => Unit
+	type Undo = () => Unit
+	type EffCreatorTwoOL = (Int, Int, Editor) => Eff
+	type EffCreatorOneOL = (Int, Editor) => Eff
+	type UndoCreatorTwoOL = (Int, Int, Editor) => Undo
+	type UndoCreatorOneOL = (Int, Editor) => Undo
+}
+
 class TwoOverlayAction(val editor: Editor,
                        val stateInflaters: mutable.MutableList[StateInflater],
                        var state: State,
-                       val effectCreator: (Int, Int, Editor) => () => Unit,
-                       val undoCreator: (Int, Int, Editor) => () => Unit) extends DtppAction{
+                       val effectCreator: EffCreatorTwoOL,
+                       val undoCreator: UndoCreatorTwoOL) extends DtppAction{
 	override def start(e: AnActionEvent): Unit = {
 		val popups = new PopupInflater(editor, this)
 		stateInflaters += popups
@@ -104,7 +114,7 @@ class TwoOverlayAction(val editor: Editor,
 			case PluginState.SELECTING =>
 				input match {
 					case StringInput(_, _) =>
-						Reducers.selectStringTwo(currentState, input.asInstanceOf[StringInput], editor, effectCreator, undoCreator)
+						Reducers.selectStringTwoOL(currentState, input.asInstanceOf[StringInput], editor, effectCreator, undoCreator)
 					case EscapeInput(_) =>
 						Reducers.selectEscape(currentState, input.asInstanceOf[EscapeInput], editor)
 					case _ => currentState
@@ -127,8 +137,8 @@ class TwoOverlayAction(val editor: Editor,
 class SingleOverlayAction(val editor: Editor,
                           val stateInflaters: mutable.MutableList[StateInflater],
                           var state: State,
-                          val effectCreator: (Int, Editor) => () => Unit,
-                          val undoCreator: (Int, Editor) => () => Unit) extends DtppAction{
+                          val effectCreator: EffCreatorOneOL,
+                          val undoCreator: UndoCreatorOneOL) extends DtppAction{
 	override def start(e: AnActionEvent) {
 		val popups = new PopupInflater(editor, this)
 		stateInflaters += popups
@@ -157,7 +167,7 @@ class SingleOverlayAction(val editor: Editor,
 			case PluginState.SELECTING =>
 				input match {
 					case StringInput(_, _) =>
-						Reducers.selectString(currentState, input.asInstanceOf[StringInput], editor, effectCreator, undoCreator)
+						Reducers.selectStringOneOL(currentState, input.asInstanceOf[StringInput], editor, effectCreator, undoCreator)
 					case EscapeInput(_) =>
 						Reducers.selectEscape(currentState, input.asInstanceOf[EscapeInput], editor)
 					case _ => currentState
@@ -178,6 +188,11 @@ class SingleOverlayAction(val editor: Editor,
 }
 
 case class Marker(start: Int, end: Int, orgText: String, repText: String, mType: MarkerType)
+
+trait DTPPMarker
+case class SelectedMarker(start: Int, end: Int) extends DTPPMarker
+case class PrimaryMarker(start: Int, end: Int) extends DTPPMarker
+case class SecondaryMarker(start: Int, end: Int) extends DTPPMarker
 
 object MarkerType extends Enumeration {
 	type MarkerType = Value

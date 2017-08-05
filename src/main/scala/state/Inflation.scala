@@ -3,13 +3,16 @@ package state
 import java.awt.Graphics
 import javax.swing.JComponent
 
+import actions.DtppAction
 import com.intellij.openapi.editor.{Editor, LogicalPosition, ScrollType}
 import com.intellij.openapi.ui.popup.{JBPopup, JBPopupFactory}
 import com.intellij.ui.components.JBTextField
-import main.ListenerType.ListenerType
-import main._
+
+import actions.ListenerType.ListenerType
 import state.PluginState.PluginState
 import util.{Constants, PaintUtil}
+
+import actions._
 
 /**
   * Created by dr0l3 on 4/9/17.
@@ -160,7 +163,7 @@ class ScrollInflater(val editor: Editor) extends StateInflater{
 	override def deflateState() = {}
 }
 
-case class State(var snapshots: List[Snapshot]= List.empty)
+case class State(var snapshots: List[Snapshot] = List.empty)
 case class Snapshot(markers: List[Marker],
                     selectedMarkers: List[Marker],
                     effects: List[(() => Unit, () => Unit, String)],

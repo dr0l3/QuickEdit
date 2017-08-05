@@ -1,4 +1,4 @@
-package main
+package actions
 
 import java.awt.event.{ActionEvent, InputEvent, KeyEvent, KeyListener}
 import javax.swing.event.{DocumentEvent, DocumentListener}

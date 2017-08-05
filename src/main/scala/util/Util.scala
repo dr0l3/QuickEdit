@@ -2,15 +2,17 @@ package util
 
 import java.awt.{Graphics, Rectangle}
 import java.awt.geom.Rectangle2D
+
+import dtpp.util.EditorUtil
 import java.util.UUID
 import javax.swing.JComponent
 
+import actions.DtppAction.{EffCreatorOneOL, EffCreatorTwoOL, UndoCreatorOneOL, UndoCreatorTwoOL}
 import com.intellij.openapi.actionSystem.{AnActionEvent, CommonDataKeys}
 import com.intellij.openapi.editor.{Editor, LogicalPosition}
 import com.intellij.openapi.editor.colors.EditorFontType
-import com.intellij.openapi.util.TextRange
 import com.intellij.ui.JBColor
-import main._
+import actions._
 import state._
 
 import scala.collection.JavaConverters._
@@ -19,6 +21,7 @@ import scala.collection.mutable
 /**
   * Created by dr0l3 on 4/6/17.
   */
+
 
 object StartUtil {
 	def createInflatersAndAddComponent(anActionEvent: AnActionEvent): mutable.MutableList[StateInflater] = {
@@ -79,13 +82,15 @@ object Reducers {
 			if(search == currentState.search)
 				currentState
 			else {
-				val doc = EditorUtil.entireDocument(editor)
-				val hits: List[Int] = EditorUtil.getMatchesForStringInTextRange(search, editor, doc).asScala.map(_.toInt).toList
+				val text = editor.getDocument.getText
+				val ignoredOffsets = currentState.initialCaretPos :: currentState.selectedMarkers.map(m => m.start)
+				val hits: List[Int] = EditorUtil.getMatchesForStringInText(search, text, ignoredOffsets.map(i => i:java.lang.Integer).asJava).asScala.map(_.toInt).toList
 				val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-				val visibleArea = EditorUtil.getVisibleTextRange(editor)
-				val closestHit = sortedHits.headOption
-				val paintCenter = if(visibleArea.contains(closestHit.getOrElse(currentState.markerPaintCenter))) currentState.markerPaintCenter else sortedHits.head
-				val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet, List.empty)
+				val closestHitOrInitial = sortedHits.headOption.getOrElse(currentState.markerPaintCenter)
+				val closestHitAsPoint = editor.offsetToXY(closestHitOrInitial)
+				val visibleArea = editor.getScrollingModel.getVisibleArea
+				val paintCenter = if(visibleArea.contains(closestHitAsPoint)) currentState.markerPaintCenter else closestHitOrInitial
+				val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
 				currentState.copy(markers = markers, search = search, markerPaintCenter = paintCenter)
 			}
 		}
@@ -123,90 +128,48 @@ object Reducers {
 		}
 	}
 	
-	def selectString(currentState: Snapshot,
-	                 input: StringInput,
-	                 editor: Editor,
-	                 effectCreator: (Int, Editor) => () => Unit,
-	                 undoCreator: (Int, Editor) => () => Unit) = {
+	def selectStringOneOL(currentState: Snapshot,
+	                      input: StringInput,
+	                      editor: Editor,
+	                      effectCreator: EffCreatorOneOL,
+	                      undoCreator: UndoCreatorOneOL) = {
 		val search = input.value
-		val maybeMarkerHit = currentState.markers.find(mar => mar.repText == search.toUpperCase)
-		if(maybeMarkerHit.isEmpty){
-			currentState
-		} else {
-			maybeMarkerHit.get.mType match {
-				case MarkerType.PRIMARY =>
-					val currentPosition = editor.getCaretModel.getOffset
-					val effect = effectCreator(maybeMarkerHit.get.start, editor)
-					val undoer = undoCreator(currentPosition, editor)
-					val id = UUID.randomUUID().toString
-					val tuple = (effect, undoer, id)
-					currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
-				case MarkerType.SECONDARY =>
-					val secMarkers = currentState.markers.filterNot(marker => marker.mType == MarkerType.PRIMARY)
-					val hits = secMarkers.map(marker => marker.start)
-					val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-					val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet, List.empty)
-					val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
-					currentState.copy(markers = secAndSelected)
-				case MarkerType.SELECTED =>
-					currentState
-			}
-		}
+		currentState.markers
+			.find(mar => mar.repText.toUpperCase() == search.toUpperCase)
+	    	.map(hit => hit.mType match {
+			    case MarkerType.PRIMARY =>
+				    val currentPosition = editor.getCaretModel.getOffset
+				    val effect = effectCreator(hit.start, editor)
+				    val undoer = undoCreator(currentPosition, editor)
+				    val id = UUID.randomUUID().toString
+				    val tuple = (effect, undoer, id)
+				    currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
+			    case MarkerType.SECONDARY =>
+				    val secMarkers = currentState.markers.filter(marker => marker.mType == MarkerType.SECONDARY)
+				    val hits = secMarkers.map(marker => marker.start)
+				    val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
+				    val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
+				    val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
+				    currentState.copy(markers = secAndSelected)
+			    case MarkerType.SELECTED =>
+				    currentState
+		    }).getOrElse(currentState)
 	}
 	
-	def selectStringTwo(currentState: Snapshot,
-	                    input: StringInput, editor: Editor,
-	                    effectCreator: (Int, Int, Editor) => () => Unit,
-	                    undoCreator: (Int, Int, Editor) => () => Unit)= {
+	def selectStringTwoOL(currentState: Snapshot,
+	                      input: StringInput,
+	                      editor: Editor,
+	                      effectCreator: EffCreatorTwoOL,
+	                      undoCreator: UndoCreatorTwoOL)= {
 		val search = input.value
-		val maybeMarkerHit = currentState.markers.find(mar => mar.repText == search.toUpperCase)
-		if(maybeMarkerHit.isEmpty){
-			currentState
-		} else {
+		currentState.markers
+			.find(mar => mar.repText.toUpperCase == search.toUpperCase)
+			.map(hit =>
 			currentState.overlays match {
-				case 1 =>
-					maybeMarkerHit.get.mType match {
-						case MarkerType.PRIMARY =>
-							val selectMarker = maybeMarkerHit.get.copy(mType = MarkerType.SELECTED, end = maybeMarkerHit.get.start)
-							currentState.copy(markers = List.empty, selectedMarkers = List(selectMarker), snapshotState = PluginState.UPDATE, overlays = 2, search = "")
-						case MarkerType.SECONDARY =>
-							val secMarkers = currentState.markers.filterNot(marker => marker.mType == MarkerType.PRIMARY)
-							val hits = secMarkers.map(marker => marker.start)
-							val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-							val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet, List.empty)
-							val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
-							currentState.copy(markers = secAndSelected)
-						case MarkerType.SELECTED =>
-							currentState
-					}
-				case 2 =>
-					maybeMarkerHit.get.mType match {
-						case MarkerType.PRIMARY =>
-							val firstMarker = currentState.selectedMarkers.headOption
-							if(firstMarker.isEmpty) {
-								currentState.copy()
-							} else {
-								val smallestOffset = Math.min(firstMarker.get.start, maybeMarkerHit.get.start)
-								val largestOffset = Math.max(firstMarker.get.start, maybeMarkerHit.get.start)
-								val effect = effectCreator(smallestOffset, largestOffset, editor)
-								val undoer = undoCreator(smallestOffset, largestOffset, editor)
-								val id = UUID.randomUUID().toString
-								val tuple = (effect, undoer, id)
-								currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
-							}
-						case MarkerType.SECONDARY =>
-							val secMarkers = currentState.markers.filterNot(marker => marker.mType == MarkerType.PRIMARY)
-							val hits = secMarkers.map(marker => marker.start)
-							val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-							val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet, List.empty)
-							val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
-							currentState.copy(markers = secAndSelected)
-						case MarkerType.SELECTED =>
-							currentState
-					}
+				case 1 => selectFirstOverlay(currentState,search,hit)
+				case 2 => selectSecondOverlay(currentState,search,hit,effectCreator,undoCreator,editor)
 				case _ => currentState
-			}
-		}
+			}).getOrElse(currentState)
 	}
 	
 	def selectEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
@@ -228,6 +191,50 @@ object Reducers {
 			currentState.copy(snapshotState = PluginState.UNDO)
 		}
 	}
+	
+	private def selectFirstOverlay(currentState: Snapshot, search: String, hit: Marker) = {
+		hit.mType match {
+			case MarkerType.PRIMARY =>
+				val selectMarker = hit.copy(mType = MarkerType.SELECTED, end = hit.start)
+				currentState.copy(markers = List.empty, selectedMarkers = List(selectMarker), snapshotState = PluginState.UPDATE, overlays = 2, search = "")
+			case MarkerType.SECONDARY =>
+				val secMarkers = currentState.markers.filter(marker => marker.mType == MarkerType.SECONDARY)
+				val hits = secMarkers.map(marker => marker.start)
+				val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
+				val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
+				val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
+				currentState.copy(markers = secAndSelected)
+			case MarkerType.SELECTED =>
+				currentState
+		}
+	}
+	
+	private def selectSecondOverlay(currentState: Snapshot, search: String, hit: Marker, effectCreator: EffCreatorTwoOL, undoCreator: UndoCreatorTwoOL, editor: Editor) ={
+		hit.mType match {
+			case MarkerType.PRIMARY =>
+				val firstMarker = currentState.selectedMarkers.headOption
+				firstMarker.map(marker => {
+					val smallestOffset = Math.min(marker.start, hit.start)
+					val largestOffset = Math.max(marker.start, hit.start)
+					val effect = effectCreator(smallestOffset, largestOffset, editor)
+					val undoer = undoCreator(smallestOffset, largestOffset, editor)
+					val id = UUID.randomUUID().toString
+					val tuple = (effect, undoer, id)
+					currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
+				}).getOrElse(currentState)
+			case MarkerType.SECONDARY =>
+				val sortedHits = currentState.markers
+					.filterNot(marker => marker.mType == MarkerType.PRIMARY)
+					.map(marker => marker.start)
+			    	.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
+				val markers = MarkerUtil
+					.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
+				val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
+				currentState.copy(markers = secAndSelected)
+			case MarkerType.SELECTED =>
+				currentState
+		}
+	}
 }
 
 object Constants {
@@ -239,14 +246,17 @@ object Constants {
 }
 
 object MarkerUtil {
-	def convertToMarkers(search: String, hits: List[Int], markerAlphabet: String, acc: List[Marker]): List[Marker] = {
-		val hit = if(hits.isEmpty) return acc else hits.head
-		val markerChar = markerAlphabet.head
-		val markerType = if(markerAlphabet.length > 1) MarkerType.PRIMARY else MarkerType.SECONDARY
-		val marker = Marker(hit, hit + search.length, search, markerChar.toString, markerType)
-		val added = marker :: acc
-		val newAlphabet = if(markerAlphabet.length > 1) markerAlphabet.drop(1) else markerAlphabet
-		convertToMarkers(search, hits.drop(1), newAlphabet, added)
+	def convertToMarkers(search: String, hits: List[Int], markerAlphabet: String): List[Marker] = {
+		def inner(search: String, hits: List[Int], markerAlphabet: String, acc: List[Marker]): List[Marker] = {
+			val hit = if(hits.isEmpty) return acc else hits.head
+			val markerChar = markerAlphabet.head
+			val markerType = if(markerAlphabet.length > 1) MarkerType.PRIMARY else MarkerType.SECONDARY
+			val marker = Marker(hit, hit + search.length, search, markerChar.toString, markerType)
+			val added = marker :: acc
+			val newAlphabet = if(markerAlphabet.length > 1) markerAlphabet.drop(1) else markerAlphabet
+			inner(search, hits.drop(1), newAlphabet, added)
+		}
+		inner(search,hits,markerAlphabet, List.empty)
 	}
 }
 

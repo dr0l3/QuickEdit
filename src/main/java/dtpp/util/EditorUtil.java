@@ -1,5 +1,6 @@
-package util;
+package dtpp.util;
 
+import clojure.lang.APersistentVector;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.markup.*;
@@ -11,7 +12,10 @@ import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.KeyEvent;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -203,6 +207,36 @@ public class EditorUtil {
 
     public static TextRange entireDocument(Editor editor){
         return new TextRange(0, editor.getDocument().getTextLength()-1);
+    }
+
+    public static List<Integer> getMatchesForStringInText(String searchString, String text, List<Integer> ignoredOffsets){
+        int index = -1;
+        text = text.replace("\n", " ").replace("\t", " ").toLowerCase();
+        searchString = searchString.toLowerCase();
+        ArrayList<Integer> offsets = new ArrayList<>();
+        while(true){
+            index = text.indexOf(searchString, index + 1);
+            if(index == -1){
+                break;
+            }
+            int offset = index;
+            //exclude current caret position
+            if(ignoredOffsets.contains(offset)){
+                continue;
+            }
+
+            if(searchString.length() == 1 &&
+                    offset+1 < text.length() &&
+                    offset > 0 &&
+                    text.charAt(offset-1) == searchString.charAt(0) &&
+                    text.charAt(offset+1) == searchString.charAt(0)){
+                continue;
+            }
+
+            offsets.add(offset);
+        }
+
+        return offsets;
     }
 
     public static ArrayList<Integer> getMatchesForStringInTextRange(String searchString, Editor editor, TextRange textRange) {

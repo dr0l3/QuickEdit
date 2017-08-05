@@ -30,10 +30,10 @@
 
   <actions>
     <!-- Add your actions here -->
-    <action class="main.JumpEntry" id="Jump to offset"/>
-    <action class="main.DeleteEntry" id="Delete between two offsets"/>
-    <action class="main.CutEntry" id="Cut between two offsets"/>
-    <action class="main.CopyEntry" id="Copy between two offsets"/>
+    <action class="actions.JumpEntry" id="Jump to offset"/>
+    <action class="actions.DeleteEntry" id="Delete between two offsets"/>
+    <action class="actions.CutEntry" id="Cut between two offsets"/>
+    <action class="actions.CopyEntry" id="Copy between two offsets"/>
   </actions>
 
 </idea-plugin>
