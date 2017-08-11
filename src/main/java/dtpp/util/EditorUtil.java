@@ -14,6 +14,7 @@ import java.awt.event.KeyEvent;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -50,9 +51,11 @@ public class EditorUtil {
 
     public static void performDelete(int startOffset, int endOffset, Editor editor){
         Document document = editor.getDocument();
+        int start = startOffset < endOffset ? startOffset : endOffset;
+        int end = startOffset < endOffset ? endOffset : startOffset;
         WriteCommandAction.runWriteCommandAction(editor.getProject(), () -> {
             document.replaceString(
-                    startOffset,endOffset, "");
+                    start,end, "");
         });
         editor.getSelectionModel().removeSelection();
 
@@ -210,6 +213,9 @@ public class EditorUtil {
     }
 
     public static List<Integer> getMatchesForStringInText(String searchString, String text, List<Integer> ignoredOffsets){
+        if(Objects.equals(searchString, "")){
+            return Collections.emptyList();
+        }
         int index = -1;
         text = text.replace("\n", " ").replace("\t", " ").toLowerCase();
         searchString = searchString.toLowerCase();

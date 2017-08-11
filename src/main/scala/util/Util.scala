@@ -1,18 +1,15 @@
 package util
 
-import java.awt.{Graphics, Rectangle}
 import java.awt.geom.Rectangle2D
-
-import dtpp.util.EditorUtil
-import java.util.UUID
+import java.awt.{Graphics, Rectangle}
 import javax.swing.JComponent
 
-import actions.DtppAction.{EffCreatorOneOL, EffCreatorTwoOL, UndoCreatorOneOL, UndoCreatorTwoOL}
+import actions._
 import com.intellij.openapi.actionSystem.{AnActionEvent, CommonDataKeys}
-import com.intellij.openapi.editor.{Editor, LogicalPosition}
+import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.colors.EditorFontType
 import com.intellij.ui.JBColor
-import actions._
+import dtpp.util.EditorUtil
 import state._
 
 import scala.collection.JavaConverters._
@@ -39,200 +36,158 @@ object StartUtil {
 	}
 }
 
-object ActionUtil {
-	def handleNewState(currentState: Snapshot, newState: Snapshot, state: State, stateInflaters: mutable.MutableList[StateInflater]): State = {
-		println("newState:" + newState)
-		if((currentState.snapshotState == PluginState.UPDATE &&
-			newState.snapshotState == PluginState.SELECTING) ||
-			(currentState.snapshotState == PluginState.SELECTING &&
-				newState.snapshotState == PluginState.ACCEPT) || (
-			currentState.snapshotState == PluginState.SELECTING &&
-				newState.snapshotState == PluginState.UPDATE)){
-			state.snapshots = newState :: state.snapshots
-		} else {
-			state.snapshots = newState :: state.snapshots.tail
+trait DTPPReducers {
+	def endGame(marker: PrimaryMarker, state: DTPPState, current: SelectSnapshot): DTPPSnapshot
+	
+	def update(state: DTPPState, input: DTPPInput): DTPPState = {
+		//clear
+		val res = (input, state.history.present) match {
+			case (AcceptInput(), AcceptSnapshot(_)) => state.copy(exiting = true)
+			
+			case (StringInput(value), current: UpdateSnapshot) =>
+				val text = state.text
+				val ignoredOffsets = List(state.initialCaretPos)
+				val hits: List[Int] = EditorUtil.getMatchesForStringInText(value, text, ignoredOffsets.map(i => i:java.lang.Integer).asJava).asScala.map(_.toInt).toList
+				val paintCenterPresent = current.centerPoint match {
+					case Concrete(offset) => offset
+					case _ => state.initialCaretPos
+				}
+				val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(paintCenterPresent-offset))
+				val markers = MarkerUtil.convertToDTPPMarkers(value, sortedHits, Constants.markerAlphabet)
+				sortedHits.headOption.map(head => {
+					val paintCenterNext = if(state.visibleText.contains(head)) paintCenterPresent else head
+					val updatedSnapshot = current.copy(markers = markers, centerPoint = Concrete(paintCenterNext))
+					state.copy(history = state.history.update(updatedSnapshot))
+				}).getOrElse({
+					val next = current.copy(markers = List.empty)
+					state.copy(history = state.history.update(next))})
+				
+			case (StringInput(value), current: SelectSnapshot) =>
+				current.markers
+					.find(mar => mar.repText.toUpperCase == value.toUpperCase)
+					.map {
+						case marker: PrimaryMarker => endGame(marker,state, current)
+						case _: SecondaryMarker => widen(current,state)}
+					.map(next => state.copy(history = state.history.advance(next)))
+					.getOrElse(state)
+				
+			case (EnterInput(), current: UpdateSnapshot) =>
+				val next = SelectSnapshot(current.markers, current.selectedMarkers,current.search, current.centerPoint)
+				state.copy(history = state.history.advance(next))
+				
+			case (EnterInput(), current: SelectSnapshot) =>
+				val next = widen(current, state)
+				state.copy(history = state.history.advance(next))
+				
+			case (ScrollUpInput(), current: UpdateSnapshot)  =>
+				val nextPoint = Relative(current.centerPoint, LineExtension(15))
+				val next = current.copy(centerPoint = nextPoint)
+				state.copy(history = state.history.update(next))
+				
+			case (ScrollUpInput(), current: SelectSnapshot)  =>
+				val nextPoint = Relative(current.centerPoint, LineExtension(15))
+				val next = current.copy(centerPoint = nextPoint)
+				state.copy(history = state.history.update(next))
+			case (ScrollDownInput(), current: UpdateSnapshot)  =>
+				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
+				val next = current.copy(centerPoint = nextPoint)
+				state.copy(history = state.history.update(next))
+				
+			case (ScrollDownInput(), current: SelectSnapshot)  =>
+				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
+				val next = current.copy(centerPoint = nextPoint)
+				state.copy(history = state.history.update(next))
+				
+			case (ScrollHomeInput(), current: UpdateSnapshot)  =>
+				val next = current.copy(centerPoint = Concrete(state.initialCaretPos))
+				state.copy(history = state.history.update(next))
+				
+			case (ScrollHomeInput(), current: SelectSnapshot)  =>
+				val next = current.copy(centerPoint = Concrete(state.initialCaretPos))
+				state.copy(history = state.history.update(next))
+				
+			case (EscapeInput(), _) =>
+				state.history.undo()
+					.map(nextHist => state.copy(history = nextHist))
+			    	.getOrElse(state.copy(exiting = true))
+				
+			case (AltEscapeInput(),_ ) => state.copy(exiting = true)
+			
+			case (_, _) =>
+				state
 		}
-		
-		if(newState.snapshotState == PluginState.UNDO){
-			if(state.snapshots.tail.isEmpty){
-				state.snapshots = List(state.snapshots.head.copy(snapshotState = PluginState.EXIT))
-			} else {
-				state.snapshots = state.snapshots.tail
-			}
+		res
+	}
+	
+	private def widen(current: SelectSnapshot, state: DTPPState) = {
+		val secMarkers = current.markers.filter {
+			case _: PrimaryMarker => false
+			case _: SecondaryMarker => true
 		}
-		
-		if(state.snapshots.head.snapshotState != PluginState.EXIT){
-			println("The stack:" + state.snapshots)
-			println("inflating: " + state.snapshots.head)
-			stateInflaters.foreach(inf => inf.inflateState(state.snapshots.head))
-		} else {
-			println("Exit")
-			stateInflaters.foreach(inf => inf.deflateState())
+		val hits = secMarkers.map(marker => marker.start)
+		val markerPaintCenter = current.centerPoint match {
+			case Concrete(offset) => offset
+			case _ => state.initialCaretPos
 		}
-		state
+		val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(markerPaintCenter - offset))
+		val markers = MarkerUtil.convertToDTPPMarkers(state.search, sortedHits, Constants.markerAlphabet)
+		current.copy(markers = markers)
 	}
 }
 
-object Reducers {
-	def updateString(currentState: Snapshot, input: StringInput, editor: Editor) = {
-		val search = input.value
-		if(search == ""){
-			currentState.copy(markers = List.empty)
-		} else {
-			if(search == currentState.search)
-				currentState
-			else {
-				val text = editor.getDocument.getText
-				val ignoredOffsets = currentState.initialCaretPos :: currentState.selectedMarkers.map(m => m.start)
-				val hits: List[Int] = EditorUtil.getMatchesForStringInText(search, text, ignoredOffsets.map(i => i:java.lang.Integer).asJava).asScala.map(_.toInt).toList
-				val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-				val closestHitOrInitial = sortedHits.headOption.getOrElse(currentState.markerPaintCenter)
-				val closestHitAsPoint = editor.offsetToXY(closestHitOrInitial)
-				val visibleArea = editor.getScrollingModel.getVisibleArea
-				val paintCenter = if(visibleArea.contains(closestHitAsPoint)) currentState.markerPaintCenter else closestHitOrInitial
-				val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
-				currentState.copy(markers = markers, search = search, markerPaintCenter = paintCenter)
-			}
+case object Jump extends DTPPReducers {
+	override def endGame(marker: PrimaryMarker, state: DTPPState, current: SelectSnapshot): DTPPSnapshot = {
+		AcceptSnapshot(JumpEffect(marker.start, state.initialCaretPos))
+	}
+}
+
+case object Delete extends DTPPReducers {
+	override def endGame(marker: PrimaryMarker, state: DTPPState, current: SelectSnapshot): DTPPSnapshot = {
+		current.selectedMarkers.size match {
+			case 0 =>
+				val selectedMarker = SelectedMarker(marker.start,marker.end,marker.text)
+				UpdateSnapshot(List.empty, List(selectedMarker),"",Concrete(state.initialCaretPos))
+			case 1 =>
+				val start = current.selectedMarkers.head.start
+				val end = marker.start
+				val text =
+					if(start < end) state.text.substring(start,end)
+					else state.text.substring(end,start)
+				AcceptSnapshot(DeleteEffect(start, end, text).validate())
+			case _ => state.history.present
 		}
 	}
-	
-	def updateEnter(currentState: Snapshot, input: EnterInput, editor: Editor) ={
-		currentState.copy(snapshotState = PluginState.SELECTING)
-	}
-	
-	def updateEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		commonEscape(currentState, input, editor)
-	}
-	
-	def updateScroll(currentState: Snapshot, input: ScrollInput, editor: Editor) = {
-		val dir = input.dir
-		dir match {
-			case ScrollDirection.UP =>
-				val visibleTextRange = EditorUtil.getVisibleTextRange(editor)
-				val startVisible = visibleTextRange.getStartOffset
-				val oldUpper = editor.offsetToLogicalPosition(startVisible)
-				val newLine = Math.max(oldUpper.line - Constants.scrollLines, 0)
-				val newCenter = new LogicalPosition(newLine, oldUpper.column)
-				val newOffset = editor.logicalPositionToOffset(newCenter)
-				currentState.copy(markerPaintCenter = newOffset)
-			case ScrollDirection.DOWN =>
-				val visibleTextRange = EditorUtil.getVisibleTextRange(editor)
-				val endVisible = visibleTextRange.getEndOffset
-				val oldLower = editor.offsetToLogicalPosition(endVisible)
-				val newLine = Math.min(oldLower.line + Constants.scrollLines, editor.getDocument.getLineCount)
-				val newCenter = new LogicalPosition(newLine, oldLower.column)
-				val newOffset = editor.logicalPositionToOffset(newCenter)
-				currentState.copy(markerPaintCenter = newOffset)
-			case ScrollDirection.HOME =>
-				currentState.copy(markerPaintCenter = currentState.initialCaretPos)
+}
+
+case object Cut extends DTPPReducers {
+	override def endGame(marker: PrimaryMarker, state: DTPPState, current: SelectSnapshot): DTPPSnapshot = {
+		current.selectedMarkers.size match {
+			case 0 =>
+				val selectedMarker = SelectedMarker(marker.start,marker.end,marker.text)
+				UpdateSnapshot(List.empty, List(selectedMarker),"",Concrete(state.initialCaretPos))
+			case 1 =>
+				val start = current.selectedMarkers.head.start
+				val end = marker.start
+				val text =
+					if(start < end) state.text.substring(start,end)
+					else state.text.substring(end,start)
+				AcceptSnapshot(CutEffect(start, end, text).validate())
+			case _ => state.history.present
 		}
 	}
-	
-	def selectStringOneOL(currentState: Snapshot,
-	                      input: StringInput,
-	                      editor: Editor,
-	                      effectCreator: EffCreatorOneOL,
-	                      undoCreator: UndoCreatorOneOL) = {
-		val search = input.value
-		currentState.markers
-			.find(mar => mar.repText.toUpperCase() == search.toUpperCase)
-	    	.map(hit => hit.mType match {
-			    case MarkerType.PRIMARY =>
-				    val currentPosition = editor.getCaretModel.getOffset
-				    val effect = effectCreator(hit.start, editor)
-				    val undoer = undoCreator(currentPosition, editor)
-				    val id = UUID.randomUUID().toString
-				    val tuple = (effect, undoer, id)
-				    currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
-			    case MarkerType.SECONDARY =>
-				    val secMarkers = currentState.markers.filter(marker => marker.mType == MarkerType.SECONDARY)
-				    val hits = secMarkers.map(marker => marker.start)
-				    val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-				    val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
-				    val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
-				    currentState.copy(markers = secAndSelected)
-			    case MarkerType.SELECTED =>
-				    currentState
-		    }).getOrElse(currentState)
-	}
-	
-	def selectStringTwoOL(currentState: Snapshot,
-	                      input: StringInput,
-	                      editor: Editor,
-	                      effectCreator: EffCreatorTwoOL,
-	                      undoCreator: UndoCreatorTwoOL)= {
-		val search = input.value
-		currentState.markers
-			.find(mar => mar.repText.toUpperCase == search.toUpperCase)
-			.map(hit =>
-			currentState.overlays match {
-				case 1 => selectFirstOverlay(currentState,search,hit)
-				case 2 => selectSecondOverlay(currentState,search,hit,effectCreator,undoCreator,editor)
-				case _ => currentState
-			}).getOrElse(currentState)
-	}
-	
-	def selectEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		commonEscape(currentState, input, editor)
-	}
-	
-	def acceptAccept(currentState: Snapshot, input: AcceptInput, editor: Editor) = {
-		currentState.copy(snapshotState = PluginState.EXIT)
-	}
-	
-	def acceptEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		commonEscape(currentState, input, editor)
-	}
-	
-	private def commonEscape(currentState: Snapshot, input: EscapeInput, editor: Editor) = {
-		if(input.modifiers == ModifierCombination.ALT){
-			currentState.copy(snapshotState = PluginState.EXIT)
-		} else {
-			currentState.copy(snapshotState = PluginState.UNDO)
-		}
-	}
-	
-	private def selectFirstOverlay(currentState: Snapshot, search: String, hit: Marker) = {
-		hit.mType match {
-			case MarkerType.PRIMARY =>
-				val selectMarker = hit.copy(mType = MarkerType.SELECTED, end = hit.start)
-				currentState.copy(markers = List.empty, selectedMarkers = List(selectMarker), snapshotState = PluginState.UPDATE, overlays = 2, search = "")
-			case MarkerType.SECONDARY =>
-				val secMarkers = currentState.markers.filter(marker => marker.mType == MarkerType.SECONDARY)
-				val hits = secMarkers.map(marker => marker.start)
-				val sortedHits: List[Int] = hits.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-				val markers = MarkerUtil.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
-				val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
-				currentState.copy(markers = secAndSelected)
-			case MarkerType.SELECTED =>
-				currentState
-		}
-	}
-	
-	private def selectSecondOverlay(currentState: Snapshot, search: String, hit: Marker, effectCreator: EffCreatorTwoOL, undoCreator: UndoCreatorTwoOL, editor: Editor) ={
-		hit.mType match {
-			case MarkerType.PRIMARY =>
-				val firstMarker = currentState.selectedMarkers.headOption
-				firstMarker.map(marker => {
-					val smallestOffset = Math.min(marker.start, hit.start)
-					val largestOffset = Math.max(marker.start, hit.start)
-					val effect = effectCreator(smallestOffset, largestOffset, editor)
-					val undoer = undoCreator(smallestOffset, largestOffset, editor)
-					val id = UUID.randomUUID().toString
-					val tuple = (effect, undoer, id)
-					currentState.copy(effects = List(tuple),snapshotState = PluginState.ACCEPT)
-				}).getOrElse(currentState)
-			case MarkerType.SECONDARY =>
-				val sortedHits = currentState.markers
-					.filterNot(marker => marker.mType == MarkerType.PRIMARY)
-					.map(marker => marker.start)
-			    	.sortBy(offset => Math.abs(currentState.markerPaintCenter-offset))
-				val markers = MarkerUtil
-					.convertToMarkers(search, sortedHits, Constants.markerAlphabet)
-				val secAndSelected = markers ::: currentState.markers.filter(marker => marker.mType == MarkerType.SELECTED)
-				currentState.copy(markers = secAndSelected)
-			case MarkerType.SELECTED =>
-				currentState
+}
+
+case object Copy extends DTPPReducers {
+	override def endGame(marker: PrimaryMarker, state: DTPPState, current: SelectSnapshot): DTPPSnapshot = {
+		current.selectedMarkers.size match {
+			case 0 =>
+				val selectedMarker = SelectedMarker(marker.start,marker.end,marker.text)
+				UpdateSnapshot(List.empty, List(selectedMarker),"",Concrete(state.initialCaretPos))
+			case 1 =>
+				val start = current.selectedMarkers.head.start
+				val end = marker.start
+				AcceptSnapshot(CopyEffect(start, end))
+			case _ => state.history.present
 		}
 	}
 }
@@ -246,17 +201,18 @@ object Constants {
 }
 
 object MarkerUtil {
-	def convertToMarkers(search: String, hits: List[Int], markerAlphabet: String): List[Marker] = {
-		def inner(search: String, hits: List[Int], markerAlphabet: String, acc: List[Marker]): List[Marker] = {
+	def convertToDTPPMarkers(search: String, hits: List[Int], markerAlphabet: String) = {
+		def inner(search: String, hits: List[Int], markerAlphabet: String, acc: List[SelectableMarker]): List[SelectableMarker] = {
 			val hit = if(hits.isEmpty) return acc else hits.head
 			val markerChar = markerAlphabet.head
-			val markerType = if(markerAlphabet.length > 1) MarkerType.PRIMARY else MarkerType.SECONDARY
-			val marker = Marker(hit, hit + search.length, search, markerChar.toString, markerType)
-			val added = marker :: acc
+			val nextMarker =
+				if(markerAlphabet.length > 1) PrimaryMarker(hit, hit+search.length, search, markerChar.toString)
+				else SecondaryMarker(hit,hit+search.length,search, markerChar.toString)
+			val added = nextMarker :: acc
 			val newAlphabet = if(markerAlphabet.length > 1) markerAlphabet.drop(1) else markerAlphabet
 			inner(search, hits.drop(1), newAlphabet, added)
 		}
-		inner(search,hits,markerAlphabet, List.empty)
+		inner(search,hits,markerAlphabet,List.empty)
 	}
 }
 
@@ -269,60 +225,60 @@ object PaintUtil {
 		component.invalidate()
 	}
 	
-	def paintMarkers(markers: List[Marker], editor: Editor, markerPanel: JComponent, graphics: Graphics): Unit = {
-		markers.foreach(marker => marker.mType match {
-			case MarkerType.PRIMARY => paintMarker(marker, editor, backgroundColor = JBColor.GRAY, textColor = JBColor.WHITE, replacementTextColor = JBColor.RED, markerPanel, graphics)
-			case MarkerType.SELECTED => paintSelectedMarker(marker, editor, backgroundColor = JBColor.BLACK, textColor = JBColor.WHITE, markerPanel, graphics)
-			case MarkerType.SECONDARY => paintMarker(marker, editor, backgroundColor = JBColor.GRAY, textColor = JBColor.WHITE, replacementTextColor = JBColor.BLACK, markerPanel, graphics)
-		})
+	def paintMarkers(markers: List[DTPPMarker], editor: Editor, markerPanel: JComponent, graphics: Graphics): Unit = {
+		markers.foreach {
+			case marker: PrimaryMarker => paintMarker(marker, editor, backgroundColor = JBColor.GRAY, textColor = JBColor.WHITE, replacementTextColor = JBColor.RED, markerPanel, graphics)
+			case marker: SelectedMarker => paintSelectedMarker(marker, editor, backgroundColor = JBColor.BLACK, textColor = JBColor.WHITE, markerPanel, graphics)
+			case marker: SecondaryMarker => paintMarker(marker, editor, backgroundColor = JBColor.GRAY, textColor = JBColor.WHITE, replacementTextColor = JBColor.BLACK, markerPanel, graphics)
+		}
 	}
 	
-	def paintMarker(marker: Marker, editor: Editor, backgroundColor: JBColor, textColor: JBColor, replacementTextColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit ={
+	def paintMarker(marker: SelectableMarker, editor: Editor, backgroundColor: JBColor, textColor: JBColor, replacementTextColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit ={
 		drawBackground(editor, backgroundColor, textColor, marker, markerPanel, graphics)
-		drawMarkerChar(editor, marker, replacementTextColor, markerPanel, graphics, (m: Marker) => m.repText)
+		drawMarkerChar(editor, marker, replacementTextColor, markerPanel, graphics)
 	}
 	
-	def paintSelectedMarker(marker: Marker, editor: Editor, backgroundColor: JBColor, textColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit ={
+	def paintSelectedMarker(marker: SelectedMarker, editor: Editor, backgroundColor: JBColor, textColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit ={
 		drawSelectedChar(editor, marker, backgroundColor, textColor, markerPanel, graphics)
 	}
 	
-	def drawBackground(editor: Editor, backgroundColor: JBColor, textColor: JBColor, marker: Marker, markerPanel: JComponent, graphics: Graphics): Unit = {
+	def drawBackground(editor: Editor, backgroundColor: JBColor, textColor: JBColor, marker: SelectableMarker, markerPanel: JComponent, graphics: Graphics): Unit = {
 		val font = editor.getColorsScheme getFont EditorFontType.BOLD
-		val fontRect = markerPanel.getFontMetrics(font).getStringBounds(marker.orgText, graphics)
+		val fontRect = markerPanel.getFontMetrics(font).getStringBounds(marker.text, graphics)
 		graphics setColor backgroundColor
 		graphics setFont font
 		val x = markerPanel.getX + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.start)).getX
 		val y = markerPanel.getY + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.end)).getY
 		graphics.fillRect(x.toInt,y.toInt,fontRect.getWidth.toInt, fontRect.getHeight.toInt)
-		if(marker.orgText.length > 1){
+		if(marker.text.length > 1){
 			graphics.setColor(textColor)
 			val x_text = markerPanel.getX + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.start+1)).getX
 			val y_text = markerPanel.getY + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.end)).getY
 			val bottomYOfMarkerChar = y_text + font.getSize
-			graphics.drawString(marker.orgText.substring(1), x_text.toInt, bottomYOfMarkerChar.toInt)
+			graphics.drawString(marker.text.substring(1), x_text.toInt, bottomYOfMarkerChar.toInt)
 		}
 	}
 	
-	def drawMarkerChar(editor: Editor, marker: Marker, textColor: JBColor, markerPanel: JComponent, graphics: Graphics, stringFunc: (Marker) => String): Unit = {
+	def drawMarkerChar(editor: Editor, marker: SelectableMarker, textColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit = {
 		val font = editor.getColorsScheme.getFont(EditorFontType.BOLD)
 		val x = markerPanel.getX + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.start)).getX
 		val y = markerPanel.getY + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.end)).getY
 		val bottomYOfMarkerChar = y + font.getSize
 		graphics.setColor(textColor)
 		graphics.setFont(font)
-		graphics.drawString(stringFunc(marker), x.toInt, bottomYOfMarkerChar.toInt)
+		graphics.drawString(marker.repText, x.toInt, bottomYOfMarkerChar.toInt)
 	}
 	
-	def drawSelectedChar(editor: Editor, marker: Marker,backgroundColor: JBColor, textColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit ={
+	def drawSelectedChar(editor: Editor, marker: SelectedMarker,backgroundColor: JBColor, textColor: JBColor, markerPanel: JComponent, graphics: Graphics): Unit ={
 		val font = editor.getColorsScheme.getFont(EditorFontType.BOLD)
 		val x = markerPanel.getX + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.start)).getX
 		val y = markerPanel.getY + editor.logicalPositionToXY(editor.offsetToLogicalPosition(marker.start+1)).getY
 		val bottomYOfMarkerChar = y + font.getSize
 		graphics.setFont(font)
-		val fontRect: Rectangle2D = markerPanel.getFontMetrics(font).getStringBounds(marker.orgText.charAt(0).toString, graphics)
+		val fontRect: Rectangle2D = markerPanel.getFontMetrics(font).getStringBounds(marker.text.charAt(0).toString, graphics)
 		graphics.setColor(backgroundColor)
 		graphics.fillRect(x.toInt,y.toInt,fontRect.getWidth.toInt, fontRect.getHeight.toInt)
 		graphics.setColor(textColor)
-		graphics.drawString(marker.orgText.charAt(0).toString, x.toInt, bottomYOfMarkerChar.toInt)
+		graphics.drawString(marker.text.charAt(0).toString, x.toInt, bottomYOfMarkerChar.toInt)
 	}
 }
