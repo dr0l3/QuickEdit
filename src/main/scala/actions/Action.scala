@@ -17,7 +17,7 @@ class JumpEntry extends AnAction{
 		val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
 		val startState = DTPPState.initialState(editor)
 		println(startState)
-		new SingleOverlayAction(editor, stateInflaters, startState, Jump).start(anActionEvent)
+		new BaseAction(editor, stateInflaters, startState, Jump).start(anActionEvent)
 	}
 }
 
@@ -26,7 +26,7 @@ class DeleteEntry extends AnAction {
 		val stateInflaters = StartUtil.createInflatersAndAddComponent(anActionEvent)
 		val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
 		val startState = DTPPState.initialState(editor)
-		new TwoOverlayAction(editor, stateInflaters, startState, Delete).start(anActionEvent)
+		new BaseAction(editor, stateInflaters, startState, Delete).start(anActionEvent)
 	}
 }
 
@@ -35,7 +35,7 @@ class CopyEntry extends AnAction {
 		val stateInflaters = StartUtil.createInflatersAndAddComponent(anActionEvent)
 		val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
 		val startState = DTPPState.initialState(editor)
-		new TwoOverlayAction(editor, stateInflaters, startState, Copy).start(anActionEvent)
+		new BaseAction(editor, stateInflaters, startState, Copy).start(anActionEvent)
 	}
 }
 
@@ -44,7 +44,7 @@ class CutEntry extends AnAction {
 		val stateInflaters = StartUtil.createInflatersAndAddComponent(anActionEvent)
 		val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
 		val startState = DTPPState.initialState(editor)
-		new TwoOverlayAction(editor, stateInflaters, startState, Cut).start(anActionEvent)
+		new BaseAction(editor, stateInflaters, startState, Cut).start(anActionEvent)
 	}
 }
 
@@ -53,31 +53,11 @@ trait DtppAction {
 	def receiveInput(input: DTPPInput)
 }
 
-class TwoOverlayAction(val editor: Editor,
-                       val stateInflaters: mutable.MutableList[StateInflater],
-                       var state: DTPPState,
-                       val reducer: DTPPReducers) extends DtppAction{
-	override def start(e: AnActionEvent): Unit = {
-		val popups = new PopupInflater(editor, this)
-		stateInflaters += popups
-		val caretPos = editor.getCaretModel.getOffset
-		stateInflaters.foreach(inf => inf.inflateState(state))
-	}
-	
-	override def receiveInput(input: DTPPInput): Unit = {
-		state = reducer.update(state,input)
-		if(state.exiting){
-			stateInflaters.foreach(inf => inf.deflateState())
-		} else {
-			stateInflaters.foreach(inf => inf.inflateState(state))
-		}
-	}
-}
 
-class SingleOverlayAction(val editor: Editor,
-                          val stateInflaters: mutable.MutableList[StateInflater],
-                          var state: DTPPState,
-                          val reducer: DTPPReducers) extends DtppAction{
+class BaseAction(val editor: Editor,
+                 val stateInflaters: mutable.MutableList[StateInflater],
+                 var state: DTPPState,
+                 val reducer: DTPPReducers) extends DtppAction{
 	override def start(e: AnActionEvent) {
 		val popups = new PopupInflater(editor, this)
 		stateInflaters += popups

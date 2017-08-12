@@ -252,30 +252,24 @@ object DTPPState {
 }
 
 sealed trait DTPPSnapshot
-
 case class UpdateSnapshot(markers: List[SelectableMarker] = List.empty,
                           selectedMarkers: List[SelectedMarker] = List.empty,
                           search: String,
                           centerPoint: DTPPPoint) extends DTPPSnapshot
-
 case class SelectSnapshot(markers: List[SelectableMarker] = List.empty,
                           selectedMarkers: List[SelectedMarker] = List.empty,
                           search: String,
                           centerPoint: DTPPPoint) extends DTPPSnapshot
-
 case class AcceptSnapshot(effect: DTPPEffect) extends DTPPSnapshot
 
 sealed trait DTPPEffect
-
 case class JumpEffect(end: Int, initial: Int) extends DTPPEffect
-
 case class DeleteEffect(start: Int, end: Int, text: String) extends DTPPEffect {
 	def validate(): DeleteEffect = {
 		if (this.start < this.end) this
 		else DeleteEffect(this.end, this.start,this.text)
 	}
 }
-
 
 case class CutEffect(start: Int, end: Int, text: String) extends DTPPEffect {
 	def validate(): CutEffect = {
@@ -284,11 +278,8 @@ case class CutEffect(start: Int, end: Int, text: String) extends DTPPEffect {
 	}
 }
 
-
 case class CopyEffect(start: Int, end: Int) extends DTPPEffect
-
 case class PasteEffect(start: Int, text: String) extends DTPPEffect
-
 case object ExitEffect extends DTPPEffect
 
 sealed trait DTPPPoint {
@@ -323,12 +314,5 @@ case class Relative(parent: DTPPPoint, extension: DTPPExtension) extends DTPPPoi
 }
 
 sealed trait DTPPExtension
-
 case class LineExtension(lines: Int) extends DTPPExtension
-
 case class CharExtension(moves: Int) extends DTPPExtension
-
-object PluginState extends Enumeration {
-	type PluginState = Value
-	val UPDATE, SELECTING, ACCEPT, EXIT, UNDO = Value
-}
