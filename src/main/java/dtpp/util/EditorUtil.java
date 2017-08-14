@@ -5,16 +5,15 @@ import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.editor.*;
 import com.intellij.openapi.editor.markup.*;
 import com.intellij.openapi.ide.CopyPasteManager;
+import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.ui.JBColor;
 
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.KeyEvent;
-import java.util.ArrayList;
-import java.util.Collections;
+import java.util.*;
 import java.util.List;
-import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -49,16 +48,17 @@ public class EditorUtil {
         editor.getScrollingModel().scrollTo(pos, ScrollType.CENTER);
     }
 
-    public static void performDelete(int startOffset, int endOffset, Editor editor){
+    public static String performDelete(int startOffset, int endOffset, Editor editor){
         Document document = editor.getDocument();
         int start = startOffset < endOffset ? startOffset : endOffset;
         int end = startOffset < endOffset ? endOffset : startOffset;
+        String deletedText = editor.getDocument().getText(new TextRange(start,end));
         WriteCommandAction.runWriteCommandAction(editor.getProject(), () -> {
             document.replaceString(
                     start,end, "");
         });
         editor.getSelectionModel().removeSelection();
-
+        return deletedText;
     }
 
     public static void performMark(int startOffset, int endOffset, Editor editor){
@@ -113,15 +113,14 @@ public class EditorUtil {
         performPaste(offsets, editor, stringToPasted);
     }
 
-    public static void performCut(int startOffset, int endOffset, Editor editor){
+    public static String performCut(int startOffset, int endOffset, Editor editor){
         if(startOffset < endOffset){
             performCopy(startOffset,endOffset,editor);
-            performDelete(startOffset,endOffset,editor);
+            return performDelete(startOffset,endOffset,editor);
         } else {
             performCopy(endOffset,startOffset,editor);
-            performDelete(endOffset,startOffset,editor);
+            return performDelete(endOffset,startOffset,editor);
         }
-
     }
 
     public static String performCutWithReturn(int startOffset, int endOffset, Editor editor){
@@ -243,6 +242,42 @@ public class EditorUtil {
         }
 
         return offsets;
+    }
+
+    public static Pair<Set<Integer>,Map<Integer,String>> getMatchesSets(String searchString, String text, List<Integer> ignoredOffsets){
+        if(Objects.equals(searchString, "")){
+            return Pair.create(Collections.emptySet(), Collections.emptyMap());
+        }
+        int index = -1;
+        text = text.replace("\n", " ").replace("\t", " ").toLowerCase();
+        searchString = searchString.toLowerCase();
+        Set<Integer> offsets = new HashSet<>();
+        Map<Integer,String> offsetToString = new HashMap<>();
+        while(true){
+            index = text.indexOf(searchString, index + 1);
+            if(index == -1){
+                break;
+            }
+            int offset = index;
+            //exclude current caret position
+            if(ignoredOffsets.contains(offset)){
+                continue;
+            }
+
+            if(searchString.length() == 1 &&
+                    offset+1 < text.length() &&
+                    offset > 0 &&
+                    text.charAt(offset-1) == searchString.charAt(0) &&
+                    text.charAt(offset+1) == searchString.charAt(0)){
+                continue;
+            }
+
+            offsets.add(offset);
+            String actual = text.substring(index, index + searchString.length());
+            offsetToString.put(offset,actual);
+        }
+
+        return Pair.create(offsets,offsetToString);
     }
 
     public static ArrayList<Integer> getMatchesForStringInTextRange(String searchString, Editor editor, TextRange textRange) {

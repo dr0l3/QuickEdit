@@ -127,10 +127,15 @@ class NonCharListener(val textField: JBTextField, val action: DtppAction) extend
 class SelectMarkersCharListener(textField: JTextField, action: DtppAction) extends KeyListener with Listener{
 	override def keyTyped(e: KeyEvent) = {
 		val inputString = String.valueOf(e.getKeyChar)
-		println(e.getModifiers)
 		
 		if(Constants.markerAlphabet.toLowerCase.contains(inputString)){
-			action.receiveInput(StringInput(inputString))
+			if(e.isAltDown){
+				action.receiveInput(AltStringInput(inputString))
+			} else if(e.isShiftDown){
+				action.receiveInput(ShiftStringInput(inputString))
+			} else {
+				action.receiveInput(StringInput(inputString))
+			}
 		}
 	}
 	

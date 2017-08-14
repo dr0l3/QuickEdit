@@ -12,6 +12,8 @@ import com.intellij.ui.components.JBTextField
 import dtpp.util.EditorUtil
 import util.{Constants, PaintUtil}
 
+import scala.collection.mutable
+
 /**
   * Created by dr0l3 on 4/9/17.
   */
@@ -146,6 +148,8 @@ class MarkerPainter(val editor: Editor, var markers: List[DTPPMarker] = List.emp
 }
 
 class EffectExecutor(val editor: Editor) extends StateInflater {
+	private val delTextByEffect:mutable.Map[DTPPEffect, String] = scala.collection.mutable.Map()
+	
 	override def deflateState() = {
 		editor.getMarkupModel.removeAllHighlighters()
 	}
@@ -165,28 +169,43 @@ class EffectExecutor(val editor: Editor) extends StateInflater {
 	def executeEffect(effect: DTPPEffect) = {
 		effect match {
 			case JumpEffect(end, _) =>
-				EditorUtil.performMove(end, editor)
-			case DeleteEffect(start, end, text) =>
-				EditorUtil.performDelete(start, end, editor)
-			case CutEffect(start, end, _) =>
-				EditorUtil.performCut(start, end, editor)
+				val endOffset = end.flatten(editor).offset
+				EditorUtil.performMove(endOffset, editor)
+			case eff: DeleteEffect =>
+				val (startOffset, endOffset) = eff.validatedFlatten(editor)
+				delTextByEffect.put(eff,EditorUtil.performDelete(startOffset, endOffset+1, editor))
+			case eff: CutEffect =>
+				val (startOffset, endOffset) = eff.validatedFlatten(editor)
+				delTextByEffect.put(eff,EditorUtil.performCut(startOffset, endOffset+1, editor))
 			case PasteEffect(start, text) =>
-				EditorUtil.performPaste(start, editor, text)
-			case CopyEffect(start, end) =>
-				EditorUtil.performCopy(start, end, editor)
+				val startOffset = start.flatten(editor).offset
+				EditorUtil.performPaste(startOffset, editor, text)
+			case eff: CopyEffect =>
+				val (startOffset, endOffset) = eff.validatedFlatten(editor)
+				EditorUtil.performCopy(startOffset, endOffset, editor)
 		}
 	}
 	
 	def undoEffect(effect: DTPPEffect) = {
 		effect match {
 			case JumpEffect(_, initial) =>
-				EditorUtil.performMove(initial, editor)
-			case DeleteEffect(start, end, text) => ()
-				EditorUtil.performPaste(start, editor, text)
-			case CutEffect(start, _, text) => ()
-				EditorUtil.performPaste(start, editor, text)
-			case PasteEffect(start, text) =>
-				EditorUtil.performDelete(start, start + text.length, editor)
+				val offset = initial.flatten(editor).offset
+				EditorUtil.performMove(offset, editor)
+			case eff: DeleteEffect =>
+				val maybeText = delTextByEffect.remove(eff)
+				maybeText.foreach(text => {
+					val (offset,_) = eff.validatedFlatten(editor)
+					EditorUtil.performPaste(offset,editor,text)
+				})
+			case eff: CutEffect=>
+				val maybeText = delTextByEffect.remove(eff)
+				maybeText.foreach(text => {
+					val (offset,_) = eff.validatedFlatten(editor)
+					EditorUtil.performPaste(offset,editor,text)
+				})
+			case eff: PasteEffect =>
+				val startOffset = eff.start.flatten(editor).offset
+				EditorUtil.performDelete(startOffset, startOffset + eff.text.length, editor)
 			case CopyEffect(_, _) => ()
 		}
 	}
@@ -263,23 +282,21 @@ case class SelectSnapshot(markers: List[SelectableMarker] = List.empty,
 case class AcceptSnapshot(effect: DTPPEffect) extends DTPPSnapshot
 
 sealed trait DTPPEffect
-case class JumpEffect(end: Int, initial: Int) extends DTPPEffect
-case class DeleteEffect(start: Int, end: Int, text: String) extends DTPPEffect {
-	def validate(): DeleteEffect = {
-		if (this.start < this.end) this
-		else DeleteEffect(this.end, this.start,this.text)
+sealed trait DoubleOverlayEffect extends DTPPEffect {
+	def start: DTPPPoint
+	def end: DTPPPoint
+	def validatedFlatten(editor: Editor): (Int,Int) = {
+		val startOffset = start.flatten(editor).offset
+		val endOffset = end.flatten(editor).offset
+		if(startOffset < endOffset) (startOffset,endOffset)
+		else (endOffset, startOffset)
 	}
 }
-
-case class CutEffect(start: Int, end: Int, text: String) extends DTPPEffect {
-	def validate(): CutEffect = {
-		if (this.start < this.end) this
-		else CutEffect(this.end, this.start,this.text)
-	}
-}
-
-case class CopyEffect(start: Int, end: Int) extends DTPPEffect
-case class PasteEffect(start: Int, text: String) extends DTPPEffect
+case class JumpEffect(end: DTPPPoint, initial: DTPPPoint) extends DTPPEffect
+case class DeleteEffect(start: DTPPPoint, end: DTPPPoint) extends DoubleOverlayEffect
+case class CutEffect(start: DTPPPoint, end: DTPPPoint) extends DoubleOverlayEffect
+case class CopyEffect(start: DTPPPoint, end: DTPPPoint) extends DoubleOverlayEffect
+case class PasteEffect(start: DTPPPoint, text: String) extends DTPPEffect
 case object ExitEffect extends DTPPEffect
 
 sealed trait DTPPPoint {
@@ -308,11 +325,18 @@ case class Relative(parent: DTPPPoint, extension: DTPPExtension) extends DTPPPoi
 				editor.logicalPositionToOffset(currentPos)
 			case CharExtension(moves) =>
 				parOff + moves
+			case LineEnd =>
+				editor.getDocument.getLineEndOffset(editor.getDocument.getLineNumber(parOff)) - parOff
+			case LineStart =>
+				parOff - editor.getDocument.getLineStartOffset(editor.getDocument.getLineNumber(parOff))
 		}
 		Concrete(parOff + concreteExtension)
 	}
 }
 
+
 sealed trait DTPPExtension
 case class LineExtension(lines: Int) extends DTPPExtension
 case class CharExtension(moves: Int) extends DTPPExtension
+case object LineEnd extends DTPPExtension
+case object LineStart extends DTPPExtension

@@ -100,3 +100,5 @@ case class ScrollDownInput() extends DTPPInput
 case class ScrollHomeInput() extends DTPPInput
 case class EscapeInput() extends DTPPInput
 case class AltEscapeInput() extends DTPPInput
+case class AltStringInput(value: String) extends DTPPInput
+case class ShiftStringInput(value: String) extends DTPPInput

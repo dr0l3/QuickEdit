@@ -1,4 +1,4 @@
-import actions.StringInput
+import actions._
 import com.intellij.openapi.util.TextRange
 import org.scalatest.FlatSpec
 import state._
@@ -25,11 +25,7 @@ class TestReducers extends FlatSpec{
 	
 }
 
-object ReducerProperties extends Properties("Test specification") {
-	
-	val strInputGen:Gen[(StringInput, String)] = for {
-		str <- Gen.alphaStr
-	} yield (StringInput(str), str)
+object StringInputReducer extends Properties("Update and string input") {
 	
 	val searchUpdateWithMatch:Gen[(StringInput, DTPPState,String, String)] = for {
 		text <- Gen.alphaStr
@@ -45,21 +41,6 @@ object ReducerProperties extends Properties("Test specification") {
 		DTPPState(History(List.empty,uss,List.empty),false,"",caretPos,text, new TextRange(0,text.length),new TextRange(0,text.length)),
 		search, text)
 	
-	val searchUpdateWithOutMatch:Gen[(StringInput, DTPPState, String,String)] = for {
-		text <- Gen.alphaLowerStr
-		search <- Gen.alphaLowerStr
-		if text.length > 0 && search.length > 0
-		if !(text contains search)
-		caretPos <- Gen.choose(0,text.length)
-		uss = UpdateSnapshot(List.empty,List.empty,"",Concrete(caretPos))
-	} yield (
-		StringInput(search),
-		DTPPState(History(List.empty,uss,List.empty),false,"",caretPos,text, new TextRange(0,text.length),new TextRange(0,text.length)),
-		search, text)
-	
-	property("Test area") = forAll(strInputGen) { (input:(StringInput,String)) => input match {
-		case(strInput, str) => strInput.value.length == str.length
-	}}
 	
 	property("Update with succesful search") =
 		forAll(searchUpdateWithMatch) { (input: (StringInput, DTPPState, String, String)) => input match {
@@ -76,6 +57,18 @@ object ReducerProperties extends Properties("Test specification") {
 				!res.exiting
 	}}
 	
+	val searchUpdateWithOutMatch:Gen[(StringInput, DTPPState, String,String)] = for {
+		text <- Gen.alphaLowerStr
+		search <- Gen.alphaLowerStr
+		if text.length > 0 && search.length > 0
+		if !(text contains search)
+		caretPos <- Gen.choose(0,text.length)
+		uss = UpdateSnapshot(List.empty,List.empty,"",Concrete(caretPos))
+	} yield (
+		StringInput(search),
+		DTPPState(History(List.empty,uss,List.empty),false,"",caretPos,text, new TextRange(0,text.length),new TextRange(0,text.length)),
+		search, text)
+	
 	property("Update with nonsuccesful search") =
 		forAll(searchUpdateWithOutMatch) { (input: (StringInput, DTPPState, String, String)) => input match {
 			case (strInput, state, _, _) =>
@@ -88,5 +81,21 @@ object ReducerProperties extends Properties("Test specification") {
 				}) &&
 				!res.exiting
 	}}
+	val search = "search"
+	val selectable = List(PrimaryMarker(0,search.length,search,"A"), SecondaryMarker(10,10+search.length,search, "Z"))
+	val example = UpdateSnapshot(List.empty, List.empty,search, Concrete(0))
 	
+	
+//	val updateSnapshotGenerator:Gen[UpdateSnapshot] = for {
+//		searchText <- Gen.alphaStr
+//		repetitions <- Gen.choose(1,10)
+//	} yield
+
+}
+
+object AcceptInput extends Properties("Some specification") {
+
+}
+
+object ReducerTypes extends Properties("check that types are correct for combinations of ") {
 }
