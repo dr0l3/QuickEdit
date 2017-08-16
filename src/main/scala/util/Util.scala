@@ -115,6 +115,7 @@ trait DTPPReducers {
 				val nextPoint = Relative(current.centerPoint, LineExtension(15))
 				val next = current.copy(centerPoint = nextPoint)
 				state.copy(history = state.history.update(next))
+			
 			case (ScrollDownInput(), current: UpdateSnapshot)  =>
 				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
 				val next = current.copy(centerPoint = nextPoint)

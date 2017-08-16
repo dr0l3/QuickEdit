@@ -9,24 +9,48 @@ import org.scalacheck.Prop._
 
 import scala.collection.JavaConverters._
 
-class TestReducers extends FlatSpec{
+object TestReducers extends Properties("Update and string input") {
 	
-	"Initial state and stringinput" should "give a new updatestate" in {
-		val input = StringInput("a")
-		val initialState = UpdateSnapshot(List.empty,List.empty,"",Concrete(1))
-		val text = "hello world"
-		val textRange = new TextRange(0,text.length)
-		val state = DTPPState(History(List.empty,initialState,List.empty),false,"",1,text,textRange,textRange)
-		
-		val res = Jump.update(state,input)
-		assert(res.history.past == List.empty)
-		assert(res.history.future == List.empty)
-		assert(!res.exiting)
-	}
+	val randomScroll:Gen[DTPPInput] = for {
+		_ <- Gen.choose(0,1)
+		possibleOptions = List(ScrollUpInput(), ScrollDownInput(), ScrollHomeInput())
+		returned <- Gen.oneOf(possibleOptions)
+	} yield returned
 	
-}
-
-object StringInputReducer extends Properties("Update and string input") {
+	val acceptStateGenerator:Gen[DTPPState] = for {
+		searchText <- Gen.alphaStr
+		repetitions <- Gen.choose(1,50)
+		repsAsList = List.fill(repetitions)(searchText)
+		text <- Gen.containerOfN[List,String](repetitions,Gen.alphaStr)
+		allText = scala.util.Random.shuffle(repsAsList ::: text).mkString
+		hits = EditorUtil.getMatchesSets(searchText,allText,java.util.Collections.emptyList())
+		if hits.first.size() > 0
+		prim = Set.empty ++ hits.first.asScala.map(_.toInt)
+		sec = Map.empty ++ hits.second.asScala.map(p => p._1.toInt -> p._2)
+		markers = MarkerUtil.convert2MarkersUnique(prim,sec, searchText)
+		appended = markers._1.values.toList ::: markers._2.toList
+		updateState = UpdateSnapshot(markers = appended,List.empty,searchText, Concrete(0))
+		selectState = SelectSnapshot(markers = appended, List.empty, searchText, Concrete(0))
+		acceptState = AcceptSnapshot(JumpEffect(Concrete(0),Concrete(1)))
+		textRange = new TextRange(0, allText.length)
+	} yield DTPPState(History(List(selectState,updateState), acceptState, List.empty), false, "", 0, allText, textRange, textRange)
+	
+	val selectStateGenerator:Gen[DTPPState] = for {
+		searchText <- Gen.alphaStr
+		repetitions <- Gen.choose(1,50)
+		repsAsList = List.fill(repetitions)(searchText)
+		text <- Gen.containerOfN[List,String](repetitions,Gen.alphaStr)
+		allText = scala.util.Random.shuffle(repsAsList ::: text).mkString
+		hits = EditorUtil.getMatchesSets(searchText,allText,java.util.Collections.emptyList())
+		if hits.first.size() > 0
+		prim = Set.empty ++ hits.first.asScala.map(_.toInt)
+		sec = Map.empty ++ hits.second.asScala.map(p => p._1.toInt -> p._2)
+		markers = MarkerUtil.convert2MarkersUnique(prim,sec, searchText)
+		appended = markers._1.values.toList ::: markers._2.toList
+		updateState = UpdateSnapshot(markers = appended,List.empty,searchText, Concrete(0))
+		selectState = SelectSnapshot(markers = appended, List.empty, searchText, Concrete(0))
+		textRange = new TextRange(0, allText.length)
+	} yield DTPPState(History(List(updateState), selectState, List.empty), false, "", 0, allText, textRange, textRange)
 	
 	val updateStateGenerator:Gen[DTPPState] = for {
 		searchText <- Gen.alphaStr
@@ -43,6 +67,14 @@ object StringInputReducer extends Properties("Update and string input") {
 		updateState = UpdateSnapshot(markers = appended,List.empty,searchText, Concrete(0))
 		textRange = new TextRange(0, allText.length)
 	} yield DTPPState(History(List.empty, updateState, List.empty), false, "", 0, allText, textRange, textRange)
+	
+	val randomState:Gen[DTPPState] = for {
+		accept <- acceptStateGenerator
+		update <- updateStateGenerator
+		select <- selectStateGenerator
+		states = List(accept,update,select)
+		returned <- Gen.oneOf(states)
+	} yield returned
 	
 	val searchUpdateWithMatch:Gen[(StringInput, DTPPState,String, String)] = for {
 		text <- Gen.alphaStr
@@ -98,24 +130,6 @@ object StringInputReducer extends Properties("Update and string input") {
 				}) &&
 				!res.exiting
 	}}
-	
-	
-	val selectStateGenerator:Gen[DTPPState] = for {
-		searchText <- Gen.alphaStr
-		repetitions <- Gen.choose(1,50)
-		repsAsList = List.fill(repetitions)(searchText)
-		text <- Gen.containerOfN[List,String](repetitions,Gen.alphaStr)
-		allText = scala.util.Random.shuffle(repsAsList ::: text).mkString
-		hits = EditorUtil.getMatchesSets(searchText,allText,java.util.Collections.emptyList())
-		if hits.first.size() > 0
-		prim = Set.empty ++ hits.first.asScala.map(_.toInt)
-		sec = Map.empty ++ hits.second.asScala.map(p => p._1.toInt -> p._2)
-		markers = MarkerUtil.convert2MarkersUnique(prim,sec, searchText)
-		appended = markers._1.values.toList ::: markers._2.toList
-		updateState = UpdateSnapshot(markers = appended,List.empty,searchText, Concrete(0))
-		selectState = SelectSnapshot(markers = appended, List.empty, searchText, Concrete(0))
-		textRange = new TextRange(0, allText.length)
-	} yield DTPPState(History(List(updateState), selectState, List.empty), false, "", 0, allText, textRange, textRange)
 	
 	val combinedWithNoMods:Gen[(DTPPState,StringInput)] = for {
 		inp <- Gen.alphaChar
@@ -212,5 +226,23 @@ object StringInputReducer extends Properties("Update and string input") {
 					case _ => false
 				}) &&
 				res.history.past.head == state.history.present
+		}}
+	
+	val randomScrollWithRandomState:Gen[(DTPPInput,DTPPState)] = for {
+		input <- randomScroll
+		state <- randomState
+	} yield (input,state)
+	
+	property("(x, scroll) -> x") =
+		forAll(randomScrollWithRandomState) { (i: (DTPPInput,DTPPState)) => i match {
+			case (input: DTPPInput,state: DTPPState) =>
+				val res = Jump.update(state,input)
+				(res.history.past == state.history.past) &&
+				((res.history.present, state.history.present) match {
+					case (_: UpdateSnapshot, _: UpdateSnapshot) => true
+					case (_: SelectSnapshot, _: SelectSnapshot) => true
+					case (_: AcceptSnapshot, _: AcceptSnapshot) => true
+					case (_,_) => false
+				})
 		}}
 }

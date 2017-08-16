@@ -182,7 +182,7 @@ class EffectExecutor(val editor: Editor) extends StateInflater {
 				EditorUtil.performPaste(startOffset, editor, text)
 			case eff: CopyEffect =>
 				val (startOffset, endOffset) = eff.validatedFlatten(editor)
-				EditorUtil.performCopy(startOffset, endOffset, editor)
+				EditorUtil.performCopy(startOffset, endOffset+1, editor)
 		}
 	}
 	
