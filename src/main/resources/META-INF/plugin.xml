@@ -1,0 +1,39 @@
+<idea-plugin>
+  <id>com.droletours.quickedit</id>
+  <name>QuickEdit</name>
+  <version>1.0</version>
+  <vendor email="runedrolepedersen@gmail.com" url="http://www.drole.work">Drole Tours</vendor>
+
+  <description><![CDATA[
+      Quick edit allows you to efficiently manipulate your editor. <br>
+      Quick edit draws inspiration from Easy Motion, but has no modal editor requirement.
+    ]]></description>
+
+  <change-notes><![CDATA[
+      Add change notes here.<br>
+      <em>most HTML tags may be used</em>
+    ]]>
+  </change-notes>
+
+  <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/build_number_ranges.html for description -->
+  <idea-version since-build="145.0"/>
+
+  <!-- please see http://www.jetbrains.org/intellij/sdk/docs/basics/getting_started/plugin_compatibility.html
+       on how to target different products -->
+  <!-- uncomment to enable plugin in all products
+  <depends>com.intellij.modules.lang</depends>
+  -->
+
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Add your extensions here -->
+  </extensions>
+
+  <actions>
+    <!-- Add your actions here -->
+    <action class="actions.JumpEntry" id="Jump to offset"/>
+    <action class="actions.DeleteEntry" id="Delete between two offsets"/>
+    <action class="actions.CutEntry" id="Cut between two offsets"/>
+    <action class="actions.CopyEntry" id="Copy between two offsets"/>
+  </actions>
+
+</idea-plugin>
