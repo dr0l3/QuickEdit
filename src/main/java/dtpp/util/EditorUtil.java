@@ -13,8 +13,6 @@ import java.awt.datatransfer.DataFlavor;
 import java.awt.event.KeyEvent;
 import java.util.*;
 import java.util.List;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**

@@ -263,7 +263,6 @@ class TestReducers extends PropSpec with Checkers {
 		)
 	}
 	
-	
 	val randomScrollWithRandomState:Gen[(DTPPInput,DTPPState)] = for {
 		input <- randomScroll
 		state <- randomState
@@ -284,5 +283,4 @@ class TestReducers extends PropSpec with Checkers {
 			}}
 		)
 	}
-	
 }

@@ -1,16 +1,13 @@
 import actions.{PrimaryMarker, SecondaryMarker}
-import dtpp.util.EditorUtil
 import org.junit.runner.RunWith
-import org.scalacheck.{Gen, Properties}
-import org.scalatest.{FlatSpec, PropSpec}
-import util.MarkerUtil
-import org.scalacheck._
+import org.scalacheck.Gen
 import org.scalacheck.Prop._
+import org.scalatest.{FlatSpec, PropSpec}
 import org.scalatest.junit.JUnitRunner
 import org.scalatest.prop.Checkers
-import org.scalatest._
+import util.MarkerUtil
 
-import scala.collection.JavaConverters._
+
 
 @RunWith(classOf[JUnitRunner])
 class TestFindMarkers extends FlatSpec {
