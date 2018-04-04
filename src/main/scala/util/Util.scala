@@ -107,22 +107,22 @@ trait DTPPReducers {
 				state.copy(history = state.history.advance(next))
 				
 			case (ScrollUpInput(), current: UpdateSnapshot)  =>
-				val nextPoint = Relative(current.centerPoint, LineExtension(15))
+				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
 				val next = current.copy(centerPoint = nextPoint)
 				state.copy(history = state.history.update(next))
 				
 			case (ScrollUpInput(), current: SelectSnapshot)  =>
-				val nextPoint = Relative(current.centerPoint, LineExtension(15))
+				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
 				val next = current.copy(centerPoint = nextPoint)
 				state.copy(history = state.history.update(next))
 			
 			case (ScrollDownInput(), current: UpdateSnapshot)  =>
-				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
+				val nextPoint = Relative(current.centerPoint, LineExtension(15))
 				val next = current.copy(centerPoint = nextPoint)
 				state.copy(history = state.history.update(next))
 				
 			case (ScrollDownInput(), current: SelectSnapshot)  =>
-				val nextPoint = Relative(current.centerPoint, LineExtension(-15))
+				val nextPoint = Relative(current.centerPoint, LineExtension(15))
 				val next = current.copy(centerPoint = nextPoint)
 				state.copy(history = state.history.update(next))
 				
@@ -137,7 +137,9 @@ trait DTPPReducers {
 			case (EscapeInput(), _) =>
 				state.history.undo()
 					.map(nextHist => state.copy(history = nextHist))
-			    	.getOrElse(state.copy(exiting = true))
+			    	.getOrElse({
+							state.copy(exiting = true)
+						})
 				
 			case (AltEscapeInput(),_ ) => state.copy(exiting = true)
 			

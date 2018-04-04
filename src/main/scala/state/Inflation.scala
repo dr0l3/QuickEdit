@@ -118,6 +118,7 @@ class PopupInflater(val editor: Editor, val inputReceiver: DtppAction) extends S
 	
 	override def deflateState() = {
 		listeners.foreach(lis => lis.unregister())
+		popup.foreach(_.dispose())
 		JBPopupFactory.getInstance().getChildPopups(editor.getComponent).forEach(p => p.dispose())
 	}
 }
@@ -321,7 +322,7 @@ case class Relative(parent: DTPPPoint, extension: DTPPExtension) extends DTPPPoi
 					case neg if neg < 1 => Math.max(currentLine + neg, 0)
 				}
 				val currentPos = new LogicalPosition(nextLine, parentPosition.column)
-				editor.logicalPositionToOffset(currentPos)
+				editor.logicalPositionToOffset(currentPos) * (lines / Math.abs(lines))*1 //neg -> -1. pos -> 1. 0 -> 1
 			case CharExtension(moves) =>
 				parOff + moves
 			case LineEnd =>

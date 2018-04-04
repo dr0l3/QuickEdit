@@ -1,5 +1,4 @@
 
-import com.intellij.openapi.vcs.history.VcsRevisionNumber;
 import dtpp.util.EditorUtil;
 import org.junit.Test;
 

@@ -20,14 +20,19 @@ apply plugin: 'org.jetbrains.intellij'
 
 
 intellij {
-    version 'IC-2017.2'
+    version 'IC-2018.1'
     plugins 'coverage'
     pluginName 'QuickEdit'
 }
 
+publishPlugin {
+    password "pa55word"
+    username "runedrolepedersen@gmail.com"
+}
+
 dependencies {
-    compile 'org.scala-lang:scala-library:2.12.1'
-    compile group: 'org.scala-lang', name: 'scala-compiler', version: '2.12.1'
+    compile 'org.scala-lang:scala-library:2.12.5'
+    compile group: 'org.scala-lang', name: 'scala-compiler', version: '2.12.5'
     testCompile group: 'junit', name: 'junit', version: '4.12'
 //    compile group:  'org.scala-lang', name:  'scala-library', version:  '2.12.1'
     testCompile group: 'org.scalacheck', name: 'scalacheck_2.12', version: '1.13.4'
@@ -44,4 +49,4 @@ tasks.withType(ScalaCompile) {
 }
 
 group 'dr0l3'
-version '1.0-SNAPSHOT'
+version '1.0'

@@ -12,11 +12,9 @@ import scala.collection.mutable
   */
 class JumpEntry extends AnAction{
 	override def actionPerformed(anActionEvent: AnActionEvent) {
-		println("Startin the action")
 		val stateInflaters = StartUtil.createInflatersAndAddComponent(anActionEvent)
 		val editor = anActionEvent.getData(CommonDataKeys.EDITOR)
 		val startState = DTPPState.initialState(editor)
-		println(startState)
 		new BaseAction(editor, stateInflaters, startState, Jump).start(anActionEvent)
 	}
 }
