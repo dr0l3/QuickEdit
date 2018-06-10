@@ -67,6 +67,7 @@ class PopupInflater(val editor: Editor, val inputReceiver: DtppAction) extends S
 					popup = None
 				}
 				updateListeners(Constants.acceptListeners)
+				editor.getContentComponent.requestFocus()
 			case _: SelectSnapshot =>
 				updatePopup(state.history.present)
 				textField.setEditable(false)

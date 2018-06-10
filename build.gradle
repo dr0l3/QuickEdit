@@ -6,7 +6,7 @@ buildscript {
 
 
 plugins {
-    id 'org.jetbrains.intellij' version '0.2.16'
+    id 'org.jetbrains.intellij' version '0.3.2'
 }
 
 repositories {
@@ -20,7 +20,7 @@ apply plugin: 'org.jetbrains.intellij'
 
 
 intellij {
-    version 'IC-2018.1'
+    version 'IC-2018.1.4'
     plugins 'coverage'
     pluginName 'QuickEdit'
 }

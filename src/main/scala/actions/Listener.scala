@@ -54,11 +54,14 @@ class NonAccept(val actionExample: DtppAction, val editor: Editor) extends KeyLi
 	private var counter: Int = 0
 	override def keyTyped(e: KeyEvent): Unit = {
 		counter = counter +1
-		if(e.getKeyChar == '\u001B'){
-			actionExample.receiveInput(EscapeInput())
+		val output: Option[DTPPInput] = if(e.getKeyChar == '\u001B'){
+			Some(EscapeInput())
 		} else if (counter > 2) {
-			actionExample.receiveInput(AcceptInput())
+			Some(AcceptInput())
+		} else {
+			None
 		}
+		output.foreach(op => actionExample.receiveInput(op))
 	}
 	
 	override def keyPressed(e: KeyEvent) = keyTyped(e)
